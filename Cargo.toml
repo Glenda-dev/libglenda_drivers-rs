@@ -1,0 +1,13 @@
+[package]
+name = "libglenda_drivers-rs"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "glenda_drivers"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+libglenda-rs = { path = "../libglenda-rs" }
+
+[features]
