@@ -9,5 +9,9 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 libglenda-rs = { path = "../libglenda-rs" }
+serde = { version = "1.0", default-features = false, features = [
+    "derive",
+    "alloc",
+] }
 
 [features]

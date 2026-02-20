@@ -1,3 +1,5 @@
+pub mod acpi;
+pub mod battery;
 pub mod block;
 pub mod fb;
 pub mod gpio;
@@ -6,9 +8,11 @@ pub mod input;
 pub mod kernel;
 pub mod net;
 pub mod pci;
+pub mod platform;
 pub mod rng;
 pub mod sdio;
 pub mod spi;
+pub mod thermal;
 pub mod timer;
 pub mod uart;
 pub mod usb;
@@ -22,6 +26,10 @@ pub const IOMMU_PROTO: usize = 0x302;
 pub const UART_PROTO: usize = 0x303;
 pub const TIMER_PROTO: usize = 0x30F;
 pub const SDIO_PROTO: usize = 0x310;
+pub const PLATFORM_PROTO: usize = 0x311;
+pub const ACPI_PROTO: usize = 0x312;
+pub const THERMAL_PROTO: usize = 0x313;
+pub const BATTERY_PROTO: usize = 0x314;
 
 // Storage & Network
 pub const BLOCK_PROTO: usize = 0x304;

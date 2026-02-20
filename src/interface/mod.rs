@@ -146,6 +146,43 @@ pub trait IommuDriver {
     fn flush(&mut self) -> Result<(), Error>;
 }
 
+/// PlatformDriver provides system-wide power management and control.
+pub trait PlatformDriver {
+    /// Set system sleep state (S1-S4).
+    fn set_sleep_state(&mut self, state: u32) -> Result<(), Error>;
+
+    /// Reset the system.
+    fn reset(&mut self, warm: bool) -> Result<(), Error>;
+
+    /// Shut down the system.
+    fn shutdown(&mut self) -> Result<(), Error>;
+}
+
+/// ThermalDriver provides temperature monitoring.
+pub trait ThermalDriver {
+    /// Get thermal status in Kelvin/10.
+    fn get_temperature(&self, zone: u32) -> Result<u32, Error>;
+}
+
+/// BatteryDriver provides power source and battery information.
+pub trait BatteryDriver {
+    /// Get power source status.
+    /// Returns: 1 (AC), 0 (Battery)
+    fn get_power_source(&self) -> Result<u32, Error>;
+
+    /// Get battery level (0-100).
+    fn get_level(&self) -> Result<u32, Error>;
+
+    /// Get battery status (charging, etc.)
+    fn get_status(&self) -> Result<u32, Error>;
+}
+
+/// AcpiDriver provides ACPI-specific services like method evaluation.
+pub trait AcpiDriver {
+    /// Evaluate an ACPI method (e.g. \_OSC, \_OSI).
+    fn evaluate_method(&mut self, path: &str, args: &[u64]) -> Result<Vec<u64>, Error>;
+}
+
 pub trait BusDriver {
     fn probe(&mut self) -> Result<Vec<DeviceDescNode>, Error>;
 }
