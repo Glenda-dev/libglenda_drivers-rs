@@ -1,6 +1,6 @@
 use alloc::string::String;
 use alloc::vec::Vec;
-use glenda::cap::Frame;
+use glenda::cap::{CapPtr, Endpoint, Frame};
 use glenda::error::Error;
 use glenda::protocol::device::DeviceDescNode;
 use glenda::protocol::device::fb::FbInfo;
@@ -33,7 +33,22 @@ pub trait BlockDriver {
     /// Initialize an IO ring for high performance asynchronous block IO.
     /// This is the MANDATORY method for all data operations (read, write, sync).
     /// Returns a Frame containing the shared ring memory.
-    fn setup_ring(&mut self, sq_entries: u32, cq_entries: u32) -> Result<Frame, Error>;
+    fn setup_ring(
+        &mut self,
+        sq_entries: u32,
+        cq_entries: u32,
+        notify_ep: Endpoint,
+        recv: CapPtr,
+    ) -> Result<Frame, Error>;
+
+    /// Setup shared memory buffer for IO data.
+    fn setup_shm(
+        &mut self,
+        frame: Frame,
+        vaddr: usize,
+        paddr: u64,
+        size: usize,
+    ) -> Result<(), Error>;
 }
 
 /// NetDriver provides metadata and asynchronous IO ring setup for network packet transmission.
@@ -43,7 +58,22 @@ pub trait NetDriver {
     /// Initialize an IO ring for high performance asynchronous network IO.
     /// This is the MANDATORY method for all packet operations (send, recv).
     /// Returns a Frame containing the shared ring memory.
-    fn setup_ring(&mut self, sq_entries: u32, cq_entries: u32) -> Result<Frame, Error>;
+    fn setup_ring(
+        &mut self,
+        sq_entries: u32,
+        cq_entries: u32,
+        notify_ep: Endpoint,
+        recv: CapPtr,
+    ) -> Result<Frame, Error>;
+
+    /// Setup shared memory buffer for packet data.
+    fn setup_shm(
+        &mut self,
+        frame: Frame,
+        vaddr: usize,
+        paddr: u64,
+        size: usize,
+    ) -> Result<(), Error>;
 }
 
 /// UartDriver provides serial communication.

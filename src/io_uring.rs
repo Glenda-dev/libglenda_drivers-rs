@@ -1,11 +1,12 @@
 use glenda::cap::{Endpoint, VSpace};
 use glenda::error::Error;
-use glenda::ipc::UTCB;
+use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 use glenda::mem::Perms;
 use glenda::mem::io_uring::{
     CQE_SIZE, HEADER_SIZE, IoUringBuffer, IoUringCqe, IoUringSqe, SQE_SIZE,
 };
 use glenda::mem::shm::SharedMemory;
+use glenda::protocol::{GENERIC_PROTO, generic};
 
 /// IoRing provides a unified management layer for shared-memory ring buffers.
 /// It wraps the basic IoUringBuffer from glenda and adds OS-level integration.
@@ -54,16 +55,25 @@ impl IoRing {
 pub struct IoRingServer {
     ring: IoRing,
     client_notify: Option<Endpoint>,
+    notify_tag: MsgTag,
 }
 
 impl IoRingServer {
     pub fn new(ring: IoRing) -> Self {
-        Self { ring, client_notify: None }
+        Self {
+            ring,
+            client_notify: None,
+            notify_tag: MsgTag::new(GENERIC_PROTO, generic::NOTIFY, MsgFlags::NONE),
+        }
     }
 
     /// Configure an endpoint to notify the client when new completions are available.
     pub fn set_client_notify(&mut self, endpoint: Endpoint) {
         self.client_notify = Some(endpoint);
+    }
+
+    pub fn set_notify_tag(&mut self, tag: MsgTag) {
+        self.notify_tag = tag;
     }
 
     /// Pull the next submission queue entry (SQE) from the client.
@@ -78,6 +88,7 @@ impl IoRingServer {
 
         if let Some(ref ep) = self.client_notify {
             let mut utcb = unsafe { UTCB::new() };
+            utcb.set_msg_tag(self.notify_tag);
             let _ = ep.notify(&mut utcb);
         }
         Ok(())
@@ -100,11 +111,16 @@ impl IoRingServer {
 pub struct IoRingClient {
     ring: IoRing,
     server_notify: Option<Endpoint>,
+    notify_tag: MsgTag,
 }
 
 impl IoRingClient {
     pub fn new(ring: IoRing) -> Self {
-        Self { ring, server_notify: None }
+        Self {
+            ring,
+            server_notify: None,
+            notify_tag: MsgTag::new(GENERIC_PROTO, generic::NOTIFY, MsgFlags::NONE),
+        }
     }
 
     /// Configure an endpoint to notify the server when new submissions are ready.
@@ -112,12 +128,17 @@ impl IoRingClient {
         self.server_notify = Some(endpoint);
     }
 
+    pub fn set_notify_tag(&mut self, tag: MsgTag) {
+        self.notify_tag = tag;
+    }
+
     /// Submit a new operation into the ring and signal the driver.
     pub fn submit(&self, sqe: IoUringSqe) -> Result<(), Error> {
         self.ring.buffer().push_sqe(sqe).map_err(|_| Error::OutOfMemory)?;
         if let Some(ref ep) = self.server_notify {
             let mut utcb = unsafe { UTCB::new() };
-            let _ = ep.notify(&mut utcb);
+            utcb.set_msg_tag(self.notify_tag);
+            ep.notify(&mut utcb)?;
         }
         Ok(())
     }

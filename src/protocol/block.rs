@@ -11,8 +11,15 @@ pub const SETUP_PARTITION: usize = 0x3;
 /// Args: sq_entries, cq_entries
 /// Resp: Cap Transfer (Frame)
 pub const SETUP_RING: usize = 0x10;
+/// Setup shared memory buffer for IO data.
+/// Args: pages
+/// Resp: Cap Transfer (Frame)
+pub const SETUP_BUFFER: usize = 0x11;
 /// Notify the driver that new requests are in the SQ.
-pub const NOTIFY_SQ: usize = 0x11;
+pub const NOTIFY_SQ: usize = 0x12;
+
+/// Async notification for IO completion
+pub const NOTIFY_IO: usize = 0x20;
 
 use glenda::mem::io_uring::{IORING_OP_READ, IORING_OP_SYNC, IORING_OP_WRITE, IoUringSqe};
 

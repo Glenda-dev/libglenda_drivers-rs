@@ -8,6 +8,15 @@ pub const GET_MAC: usize = 0x1;
 /// Resp: Cap Transfer (Frame)
 pub const SETUP_RING: usize = 0x10;
 
+/// Setup shared memory buffer for packet data.
+pub const SETUP_BUFFER: usize = 0x11;
+
+/// Notify submission queue update
+pub const NOTIFY_SQ: usize = 0x12;
+
+/// Async notification for packet RX/TX completion
+pub const NOTIFY_IO: usize = 0x20;
+
 /// Network-specific ring opcodes for io_uring
 pub mod opcodes {
     pub const SEND: u8 = 10;
