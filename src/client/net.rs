@@ -1,9 +1,9 @@
 use crate::interface::NetDriver;
-use crate::io_uring::IoRingClient;
-use crate::protocol::{net, NET_PROTO};
+use crate::protocol::{NET_PROTO, net};
 use core::sync::atomic::{AtomicU64, Ordering};
 use glenda::cap::{CapPtr, Endpoint, Frame};
 use glenda::error::Error;
+use glenda::io::uring::IoUringClient;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 use glenda::mem::shm::SharedMemory;
 use glenda::protocol::device::net::MacAddress;
@@ -11,20 +11,14 @@ use glenda::protocol::device::net::MacAddress;
 pub struct NetClient {
     endpoint: Endpoint,
     notify_ep: Option<Endpoint>,
-    ring: Option<IoRingClient>,
+    ring: Option<IoUringClient>,
     shm: Option<SharedMemory>,
     next_id: AtomicU64,
 }
 
 impl NetClient {
     pub const fn new(endpoint: Endpoint) -> Self {
-        Self {
-            endpoint,
-            notify_ep: None,
-            ring: None,
-            shm: None,
-            next_id: AtomicU64::new(0x1000),
-        }
+        Self { endpoint, notify_ep: None, ring: None, shm: None, next_id: AtomicU64::new(0x1000) }
     }
 
     pub fn set_shm(&mut self, shm: SharedMemory) {
@@ -35,12 +29,12 @@ impl NetClient {
         self.shm.as_ref()
     }
 
-    pub fn set_ring(&mut self, mut ring: IoRingClient) {
+    pub fn set_ring(&mut self, mut ring: IoUringClient) {
         ring.set_server_notify(self.endpoint);
         self.ring = Some(ring);
     }
 
-    pub fn ring(&self) -> Option<&IoRingClient> {
+    pub fn ring(&self) -> Option<&IoUringClient> {
         self.ring.as_ref()
     }
 
@@ -158,7 +152,13 @@ impl NetDriver for NetClient {
         Ok(Frame::from(recv))
     }
 
-    fn setup_shm(&mut self, frame: Frame, vaddr: usize, paddr: u64, size: usize) -> Result<(), Error> {
+    fn setup_shm(
+        &mut self,
+        frame: Frame,
+        vaddr: usize,
+        paddr: u64,
+        size: usize,
+    ) -> Result<(), Error> {
         let mut utcb = unsafe { UTCB::new() };
         utcb.clear();
         utcb.set_cap_transfer(frame.cap());

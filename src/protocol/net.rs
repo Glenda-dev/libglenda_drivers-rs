@@ -23,24 +23,12 @@ pub mod opcodes {
     pub const RECV: u8 = 11;
 }
 
-use glenda::mem::io_uring::IoUringSqe;
+use glenda::io::uring::IoUringSqe;
 
 pub fn sqe_send(addr: u64, len: u32, user_data: u64) -> IoUringSqe {
-    IoUringSqe {
-        opcode: opcodes::SEND,
-        addr,
-        len,
-        user_data,
-        ..Default::default()
-    }
+    IoUringSqe { opcode: opcodes::SEND, addr, len, user_data, ..Default::default() }
 }
 
 pub fn sqe_recv(addr: u64, len: u32, user_data: u64) -> IoUringSqe {
-    IoUringSqe {
-        opcode: opcodes::RECV,
-        addr,
-        len,
-        user_data,
-        ..Default::default()
-    }
+    IoUringSqe { opcode: opcodes::RECV, addr, len, user_data, ..Default::default() }
 }
