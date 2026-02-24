@@ -77,13 +77,6 @@ impl BlockClient {
 
     pub fn set_ring(&mut self, mut ring: IoUringClient) {
         ring.set_server_notify(self.endpoint);
-        if self.notify_ep.is_some() {
-            ring.set_notify_tag(MsgTag::new(
-                BLOCK_PROTO,
-                block::NOTIFY_SQ,
-                glenda::ipc::MsgFlags::NONE,
-            ));
-        }
         self.ring = Some(ring);
     }
 
@@ -260,13 +253,6 @@ impl BlockDriver for BlockClient {
         recv: CapPtr,
     ) -> Result<Frame, Error> {
         self.notify_ep = Some(notify_ep);
-        if let Some(ref mut ring) = self.ring {
-            ring.set_notify_tag(MsgTag::new(
-                BLOCK_PROTO,
-                block::NOTIFY_SQ,
-                glenda::ipc::MsgFlags::NONE,
-            ));
-        }
         let mut utcb = unsafe { UTCB::new() };
         utcb.clear();
         let tag = MsgTag::new(BLOCK_PROTO, block::SETUP_RING, MsgFlags::HAS_CAP);
