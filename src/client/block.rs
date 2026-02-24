@@ -150,7 +150,8 @@ impl BlockClient {
         let id = self.next_user_data();
 
         // Use the beginning of SHM for synchronous operations
-        let src_addr = shm.vaddr() as u64;
+        // We use client_vaddr because that's what the server expects.
+        let src_addr = shm.client_vaddr() as u64;
 
         let sqe = block::sqe_read(offset, src_addr, len, id);
         ring.submit(sqe)?;
@@ -201,7 +202,10 @@ impl BlockClient {
             unsafe { core::slice::from_raw_parts_mut(shm.vaddr() as *mut u8, len as usize) };
         let copy_len = core::cmp::min(len as usize, buf.len());
         shm_buf[..copy_len].copy_from_slice(&buf[..copy_len]);
-        let dst_addr = shm.vaddr() as u64;
+
+        // Use the beginning of SHM for synchronous operations
+        // We use client_vaddr because that's what the server expects.
+        let dst_addr = shm.client_vaddr() as u64;
 
         let sqe = block::sqe_write(offset, dst_addr, len, id);
         ring.submit(sqe)?;
