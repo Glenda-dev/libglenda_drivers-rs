@@ -123,14 +123,9 @@ impl NetDriver for NetClient {
         utcb.set_msg_tag(tag);
         if let Ok(_) = self.endpoint.call(&mut utcb) {
             let mut mac = [0u8; 6];
-            let val1 = utcb.get_mr(0) as u32;
-            let val2 = utcb.get_mr(1) as u32;
-            mac[0] = (val1 & 0xFF) as u8;
-            mac[1] = ((val1 >> 8) & 0xFF) as u8;
-            mac[2] = ((val1 >> 16) & 0xFF) as u8;
-            mac[3] = ((val1 >> 24) & 0xFF) as u8;
-            mac[4] = (val2 & 0xFF) as u8;
-            mac[5] = ((val2 >> 8) & 0xFF) as u8;
+            for i in 0..6 {
+                mac[i] = utcb.get_mr(i) as u8;
+            }
             MacAddress { octets: mac }
         } else {
             MacAddress { octets: [0; 6] }
