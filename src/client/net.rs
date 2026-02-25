@@ -14,11 +14,29 @@ pub struct NetClient {
     ring: Option<IoUringClient>,
     shm: Option<SharedMemory>,
     next_id: AtomicU64,
+    mac: Option<MacAddress>,
 }
 
 impl NetClient {
     pub const fn new(endpoint: Endpoint) -> Self {
-        Self { endpoint, notify_ep: None, ring: None, shm: None, next_id: AtomicU64::new(0x1000) }
+        Self {
+            endpoint,
+            notify_ep: None,
+            ring: None,
+            shm: None,
+            next_id: AtomicU64::new(0x1000),
+            mac: None,
+        }
+    }
+
+    pub fn init(&mut self) -> Result<(), Error> {
+        let mac = self.mac_address();
+        self.mac = Some(mac);
+        Ok(())
+    }
+
+    pub fn mac(&self) -> Option<MacAddress> {
+        self.mac
     }
 
     pub fn set_shm(&mut self, shm: SharedMemory) {
@@ -75,11 +93,8 @@ impl NetClient {
         }
     }
 
-    pub fn recv_packet(&self, buf: &mut [u8]) -> Result<usize, Error> {
+    pub fn submit_recv(&self, buf: &mut [u8], id: u64) -> Result<(), Error> {
         let ring = self.ring.as_ref().ok_or(Error::NotInitialized)?;
-        let id = self.next_user_data();
-
-        // Use SHM address if buffer is within SHM
         let addr = if let Some(shm) = &self.shm {
             if shm.contains_ptr(buf.as_ptr()) {
                 shm.client_vaddr_at(buf.as_ptr()) as u64
@@ -91,21 +106,12 @@ impl NetClient {
         };
 
         let sqe = net::sqe_recv(addr, buf.len() as u32, id);
-
         ring.submit(sqe)?;
+        Ok(())
+    }
 
-        let wait_ep = self.notify_ep.as_ref().unwrap_or(&self.endpoint);
-        loop {
-            if let Some(cqe) = ring.peek_completion() {
-                if cqe.user_data == id {
-                    if cqe.res < 0 {
-                        return Err(Error::Generic);
-                    }
-                    return Ok(cqe.res as usize);
-                }
-            }
-            ring.wait_for_completions(wait_ep)?;
-        }
+    pub fn peek_cqe(&self) -> Option<glenda::io::uring::IoUringCqe> {
+        self.ring.as_ref()?.peek_completion()
     }
 }
 
