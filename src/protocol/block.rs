@@ -34,3 +34,11 @@ pub fn sqe_write(sector: u64, addr: u64, len: u32, user_data: u64) -> IoUringSqe
 pub fn sqe_sync(user_data: u64) -> IoUringSqe {
     IoUringSqe { opcode: IOURING_OP_SYNC, user_data, ..Default::default() }
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct BlockRequest {
+    pub sector: u64,
+    pub count: u32,
+    pub flags: u32,
+}

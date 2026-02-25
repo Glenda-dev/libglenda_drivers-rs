@@ -1,9 +1,9 @@
+use crate::interface::PciDriver;
+use crate::protocol::pci::PciAddress;
+use crate::protocol::{PCI_PROTO, pci};
 use glenda::cap::Endpoint;
 use glenda::error::Error;
-use crate::interface::PciDriver;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
-use glenda::protocol::device::pci::PciAddress;
-use crate::protocol::{PCI_PROTO, pci};
 use glenda::set_mrs;
 
 pub struct PciClient {

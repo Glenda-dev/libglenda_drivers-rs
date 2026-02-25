@@ -9,7 +9,6 @@ pub const GET_TEMPERATURE: usize = 0x01;
 pub const GET_ZONE_COUNT: usize = 0x02;
 /// Get thermal zone info. Returns: arg0: info (serialized)
 pub const GET_ZONE_INFO: usize = 0x03;
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ThermalType {
     Cpu,
@@ -38,7 +37,8 @@ pub struct ThermalZoneInfo {
     pub name: String,
     pub thermal_type: ThermalType,
     pub trips: Vec<ThermalTrip>,
-    pub sensor_id: usize, // Index of sensor in the driver
+    pub sensor_id: usize,       // Identifier within the reporting driver
+    pub driver_logic_id: usize, // Logic device ID of the driver reported to Unicorn
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

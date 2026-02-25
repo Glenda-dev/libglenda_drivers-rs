@@ -20,3 +20,12 @@ pub const PCI_CMD_IO: u16 = 0x1;
 pub const PCI_CMD_MEM: u16 = 0x2;
 pub const PCI_CMD_BUS_MASTER: u16 = 0x4;
 pub const PCI_CMD_INTX_DISABLE: u16 = 0x400;
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PciAddress {
+    pub segment: u16,
+    pub bus: u8,
+    pub device: u8,
+    pub function: u8,
+}

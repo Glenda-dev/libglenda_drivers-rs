@@ -1,8 +1,8 @@
-use glenda::cap::Endpoint;
 use crate::interface::InputDriver;
-use glenda::ipc::{MsgFlags, MsgTag, UTCB};
-use glenda::protocol::device::input::InputEvent;
+use crate::protocol::input::InputEvent;
 use crate::protocol::{INPUT_PROTO, input};
+use glenda::cap::Endpoint;
+use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 
 pub struct InputClient {
     endpoint: Endpoint,

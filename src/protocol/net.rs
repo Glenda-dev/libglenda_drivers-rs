@@ -32,3 +32,9 @@ pub fn sqe_send(addr: u64, len: u32, user_data: u64) -> IoUringSqe {
 pub fn sqe_recv(addr: u64, len: u32, user_data: u64) -> IoUringSqe {
     IoUringSqe { opcode: opcodes::RECV, addr, len, user_data, ..Default::default() }
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MacAddress {
+    pub octets: [u8; 6],
+}

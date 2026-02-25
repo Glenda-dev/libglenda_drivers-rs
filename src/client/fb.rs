@@ -1,9 +1,9 @@
+use crate::interface::FrameBufferDriver;
+use crate::protocol::fb::FbInfo;
+use crate::protocol::{FB_PROTO, fb};
 use glenda::cap::Endpoint;
 use glenda::error::Error;
-use crate::interface::FrameBufferDriver;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
-use glenda::protocol::device::fb::FbInfo;
-use crate::protocol::{FB_PROTO, fb};
 use glenda::set_mrs;
 
 pub struct FbClient {

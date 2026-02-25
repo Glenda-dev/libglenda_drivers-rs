@@ -1,15 +1,17 @@
+use crate::protocol::fb::FbInfo;
+use crate::protocol::input::InputEvent;
+use crate::protocol::net::MacAddress;
+use crate::protocol::pci::PciAddress;
+use crate::protocol::sdio::SdioCommand;
+use crate::protocol::thermal::ThermalZones;
+use crate::protocol::usb::UsbSetupPacket;
+use crate::protocol::wifi::WifiApInfo;
 use alloc::string::String;
 use alloc::vec::Vec;
 use glenda::cap::{CapPtr, Endpoint, Frame};
 use glenda::error::Error;
+use glenda::ipc::Badge;
 use glenda::protocol::device::DeviceDescNode;
-use glenda::protocol::device::fb::FbInfo;
-use glenda::protocol::device::input::InputEvent;
-use glenda::protocol::device::net::MacAddress;
-use glenda::protocol::device::pci::PciAddress;
-use glenda::protocol::device::sdio::SdioCommand;
-use glenda::protocol::device::usb::UsbSetupPacket;
-use glenda::protocol::device::wifi::WifiApInfo;
 pub trait DriverService {
     fn init(&mut self) -> Result<(), Error>;
     fn enable(&mut self);
@@ -219,4 +221,13 @@ pub trait BusDriver {
 
 pub trait ProbeDriver {
     fn probe(&mut self) -> Result<Vec<String>, Error>;
+}
+
+/// ThermalService provides system-wide thermal monitoring.
+pub trait ThermalService {
+    /// Get all thermal zones in the system.
+    fn get_thermal_zones(&mut self) -> Result<ThermalZones, Error>;
+
+    /// Report thermal zone information for a specific sensor.
+    fn update_thermal_zones(&mut self, badge: Badge, zones: ThermalZones) -> Result<(), Error>;
 }

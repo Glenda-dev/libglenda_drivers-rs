@@ -1,4 +1,5 @@
 use crate::interface::NetDriver;
+use crate::protocol::net::MacAddress;
 use crate::protocol::{NET_PROTO, net};
 use core::sync::atomic::{AtomicU64, Ordering};
 use glenda::cap::{CapPtr, Endpoint, Frame};
@@ -6,7 +7,6 @@ use glenda::error::Error;
 use glenda::io::uring::IoUringClient;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 use glenda::mem::shm::SharedMemory;
-use glenda::protocol::device::net::MacAddress;
 
 pub struct NetClient {
     endpoint: Endpoint,
