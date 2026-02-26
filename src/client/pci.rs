@@ -1,4 +1,4 @@
-use crate::interface::PciDriver;
+use crate::interface::{PciDriver, DriverClient};
 use crate::protocol::pci::PciAddress;
 use crate::protocol::{PCI_PROTO, pci};
 use glenda::cap::Endpoint;
@@ -9,6 +9,16 @@ use glenda::set_mrs;
 pub struct PciClient {
     endpoint: Endpoint,
     address: PciAddress,
+}
+
+impl DriverClient for PciClient {
+    fn connect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn disconnect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl PciClient {

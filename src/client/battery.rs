@@ -1,11 +1,21 @@
+use crate::interface::{BatteryDriver, DriverClient};
+use crate::protocol::{BATTERY_PROTO, battery};
 use glenda::cap::Endpoint;
 use glenda::error::Error;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
-use crate::interface::BatteryDriver;
-use crate::protocol::{BATTERY_PROTO, battery};
 
 pub struct BatteryClient {
     endpoint: Endpoint,
+}
+
+impl DriverClient for BatteryClient {
+    fn connect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn disconnect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl BatteryClient {

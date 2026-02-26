@@ -1,11 +1,21 @@
 use glenda::cap::Endpoint;
 use glenda::error::Error;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
-use crate::interface::ThermalDriver;
+use crate::interface::{ThermalDriver, DriverClient};
 use crate::protocol::{THERMAL_PROTO, thermal};
 
 pub struct ThermalClient {
     endpoint: Endpoint,
+}
+
+impl DriverClient for ThermalClient {
+    fn connect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn disconnect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl ThermalClient {

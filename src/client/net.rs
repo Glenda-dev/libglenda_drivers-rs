@@ -1,42 +1,69 @@
-use crate::interface::NetDriver;
+use crate::client::{RingParams, ShmParams};
+use crate::interface::{DriverClient, NetDriver};
 use crate::protocol::net::MacAddress;
 use crate::protocol::{NET_PROTO, net};
 use core::sync::atomic::{AtomicU64, Ordering};
-use glenda::cap::{CapPtr, Endpoint, Frame};
+use glenda::cap::{Endpoint, Frame};
+use glenda::client::ResourceClient;
 use glenda::error::Error;
-use glenda::io::uring::IoUringClient;
-use glenda::ipc::{MsgFlags, MsgTag, UTCB};
+use glenda::interface::MemoryService;
+use glenda::io::uring::{IoUringBuffer, IoUringClient};
+use glenda::ipc::{Badge, MsgFlags, MsgTag, UTCB};
 use glenda::mem::shm::SharedMemory;
 
+use alloc::sync::Arc;
+
+#[derive(Clone)]
 pub struct NetClient {
     endpoint: Endpoint,
     notify_ep: Option<Endpoint>,
     ring: Option<IoUringClient>,
     shm: Option<SharedMemory>,
-    next_id: AtomicU64,
+    next_id: Arc<AtomicU64>,
     mac: Option<MacAddress>,
+    ring_params: RingParams,
+    shm_params: ShmParams,
+    res_client: ResourceClient,
+}
+
+impl DriverClient for NetClient {
+    fn connect(&mut self) -> Result<(), Error> {
+        let mac = self.mac_address();
+        self.mac = Some(mac);
+
+        self.setup_ring_internal()?;
+        self.setup_shm_internal()?;
+
+        Ok(())
+    }
+
+    fn disconnect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl NetClient {
-    pub const fn new(endpoint: Endpoint) -> Self {
+    pub fn new(
+        endpoint: Endpoint,
+        res_client: &mut ResourceClient,
+        ring_params: RingParams,
+        shm_params: ShmParams,
+    ) -> Self {
         Self {
             endpoint,
             notify_ep: None,
             ring: None,
             shm: None,
-            next_id: AtomicU64::new(0x1000),
+            next_id: Arc::new(AtomicU64::new(0x1000)),
             mac: None,
+            ring_params,
+            shm_params,
+            res_client: res_client.clone(),
         }
     }
 
-    pub fn init(&mut self) -> Result<(), Error> {
-        let mac = self.mac_address();
-        self.mac = Some(mac);
-        Ok(())
-    }
-
-    pub fn mac(&self) -> Option<MacAddress> {
-        self.mac
+    pub fn endpoint(&self) -> Endpoint {
+        self.endpoint
     }
 
     pub fn set_shm(&mut self, shm: SharedMemory) {
@@ -131,14 +158,17 @@ impl NetDriver for NetClient {
             MacAddress { octets: [0; 6] }
         }
     }
+}
 
-    fn setup_ring(
-        &mut self,
-        sq_entries: u32,
-        cq_entries: u32,
-        notify_ep: Endpoint,
-        recv: CapPtr,
-    ) -> Result<Frame, Error> {
+impl NetClient {
+    fn setup_ring_internal(&mut self) -> Result<(), Error> {
+        let sq_entries = self.ring_params.sq_entries;
+        let cq_entries = self.ring_params.cq_entries;
+        let notify_ep = self.ring_params.notify_ep;
+        let recv = self.ring_params.recv_slot;
+        let vaddr = self.ring_params.vaddr;
+        let size = self.ring_params.size;
+
         self.notify_ep = Some(notify_ep);
         let mut utcb = unsafe { UTCB::new() };
         utcb.clear();
@@ -150,16 +180,22 @@ impl NetDriver for NetClient {
         utcb.set_msg_tag(tag);
 
         self.endpoint.call(&mut utcb)?;
-        Ok(Frame::from(recv))
+
+        let frame = Frame::from(recv);
+        self.res_client.mmap(Badge::null(), frame.clone(), vaddr, size)?;
+        let ring_buf =
+            unsafe { IoUringBuffer::new(vaddr as *mut u8, size, sq_entries as u32, cq_entries as u32) };
+        self.ring = Some(IoUringClient::new(ring_buf));
+        Ok(())
     }
 
-    fn setup_shm(
-        &mut self,
-        frame: Frame,
-        vaddr: usize,
-        paddr: u64,
-        size: usize,
-    ) -> Result<(), Error> {
+    fn setup_shm_internal(&mut self) -> Result<(), Error> {
+        let frame = self.shm_params.frame.clone();
+        let vaddr = self.shm_params.vaddr;
+        let paddr = self.shm_params.paddr;
+        let size = self.shm_params.size;
+        let recv = self.shm_params.recv_slot;
+
         let mut utcb = unsafe { UTCB::new() };
         utcb.clear();
         utcb.set_cap_transfer(frame.cap());
@@ -168,6 +204,7 @@ impl NetDriver for NetClient {
         utcb.set_mr(1, size);
         utcb.set_mr(2, paddr as usize);
         utcb.set_msg_tag(tag);
+        utcb.set_recv_window(recv);
 
         self.endpoint.call(&mut utcb)?;
 

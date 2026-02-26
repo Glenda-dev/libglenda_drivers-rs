@@ -1,11 +1,22 @@
-use crate::interface::InputDriver;
+use crate::interface::{InputDriver, DriverClient};
 use crate::protocol::input::InputEvent;
 use crate::protocol::{INPUT_PROTO, input};
 use glenda::cap::Endpoint;
+use glenda::error::Error;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 
 pub struct InputClient {
     endpoint: Endpoint,
+}
+
+impl DriverClient for InputClient {
+    fn connect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn disconnect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl InputClient {

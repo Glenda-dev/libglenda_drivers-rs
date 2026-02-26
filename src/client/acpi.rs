@@ -1,4 +1,4 @@
-use crate::interface::AcpiDriver;
+use crate::interface::{AcpiDriver, DriverClient};
 use crate::protocol::{ACPI_PROTO, acpi};
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -8,6 +8,16 @@ use glenda::ipc::{MsgFlags, MsgTag, UTCB};
 
 pub struct AcpiClient {
     endpoint: Endpoint,
+}
+
+impl DriverClient for AcpiClient {
+    fn connect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn disconnect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl AcpiClient {

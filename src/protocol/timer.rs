@@ -8,3 +8,5 @@ pub const SET_TIME: usize = 0x02;
 pub const SET_ALARM: usize = 0x03;
 /// Stop the alarm
 pub const STOP_ALARM: usize = 0x04;
+/// Get timer frequency in Hz. Returns: arg0: frequency
+pub const GET_FREQ: usize = 0x05;

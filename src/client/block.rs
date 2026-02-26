@@ -1,12 +1,16 @@
-use crate::interface::BlockDriver;
+use crate::interface::{BlockDriver, DriverClient};
 use crate::protocol::{BLOCK_PROTO, block};
+use alloc::sync::Arc;
 use core::sync::atomic::{AtomicU64, Ordering};
-use glenda::cap::{CapPtr, Endpoint, Frame};
+use glenda::cap::{Endpoint, Frame};
+use glenda::client::ResourceClient;
 use glenda::error::Error;
-use glenda::io::uring::IoUringClient;
-use glenda::ipc::{MsgFlags, MsgTag, UTCB};
-use glenda::mem::shm::SharedMemory;
+use glenda::interface::MemoryService;
+use glenda::io::uring::{IoUringBuffer, IoUringClient, RingParams};
+use glenda::ipc::{Badge, MsgFlags, MsgTag, UTCB};
+use glenda::mem::shm::{SharedMemory, ShmParams};
 
+#[derive(Clone)]
 pub struct BlockClient {
     endpoint: Endpoint,
     notify_ep: Option<Endpoint>,
@@ -14,23 +18,14 @@ pub struct BlockClient {
     shm: Option<SharedMemory>,
     block_size: u32,
     total_sectors: u64,
-    next_id: AtomicU64,
+    next_id: Arc<AtomicU64>,
+    ring_params: RingParams,
+    shm_params: ShmParams,
+    res_client: ResourceClient,
 }
 
-impl BlockClient {
-    pub const fn new(endpoint: Endpoint) -> Self {
-        Self {
-            endpoint,
-            notify_ep: None,
-            ring: None,
-            shm: None,
-            block_size: 0,
-            total_sectors: 0,
-            next_id: AtomicU64::new(0x1000),
-        }
-    }
-
-    pub fn init(&mut self) -> Result<(), Error> {
+impl DriverClient for BlockClient {
+    fn connect(&mut self) -> Result<(), Error> {
         let tag = MsgTag::new(BLOCK_PROTO, block::GET_BLOCK_SIZE, MsgFlags::NONE);
         let u = unsafe { UTCB::new() };
         u.set_msg_tag(tag);
@@ -52,32 +47,44 @@ impl BlockClient {
 
         self.total_sectors = u.get_mr(0) as u64;
 
+        self.setup_ring_internal()?;
+        self.setup_shm_internal()?;
+
         Ok(())
     }
 
-    pub fn block_size(&self) -> u32 {
-        self.block_size
+    fn disconnect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+impl BlockClient {
+    pub fn new(
+        endpoint: Endpoint,
+        res_client: &mut ResourceClient,
+        ring_params: RingParams,
+        shm_params: ShmParams,
+    ) -> Self {
+        Self {
+            endpoint,
+            notify_ep: None,
+            ring: None,
+            shm: None,
+            block_size: 0,
+            total_sectors: 0,
+            next_id: Arc::new(AtomicU64::new(0x1000)),
+            ring_params,
+            shm_params,
+            res_client: res_client.clone(),
+        }
     }
 
     pub fn total_sectors(&self) -> u64 {
         self.total_sectors
     }
 
-    pub fn endpoint(&self) -> Endpoint {
-        self.endpoint
-    }
-
-    pub fn set_shm(&mut self, shm: SharedMemory) {
-        self.shm = Some(shm);
-    }
-
-    pub fn shm(&self) -> Option<&SharedMemory> {
-        self.shm.as_ref()
-    }
-
-    pub fn set_ring(&mut self, mut ring: IoUringClient) {
-        ring.set_server_notify(self.endpoint);
-        self.ring = Some(ring);
+    pub fn block_size(&self) -> u32 {
+        self.block_size
     }
 
     pub fn ring(&self) -> Option<&IoUringClient> {
@@ -88,13 +95,8 @@ impl BlockClient {
         self.next_id.fetch_add(1, Ordering::SeqCst)
     }
 
-    /// Read data from disk directly to a shared memory address.
-    /// This assumes shm_vaddr is within the shm region provided to set_shm.
     pub fn read_shm(&self, offset: u64, len: u32, shm_vaddr: usize) -> Result<(), Error> {
         let ring = self.ring.as_ref().ok_or(Error::NotInitialized)?;
-        let _shm = self.shm.as_ref().ok_or(Error::NotInitialized)?;
-
-        // Ensure alignment to block_size
         if self.block_size == 0
             || offset % self.block_size as u64 != 0
             || len % self.block_size != 0
@@ -103,11 +105,9 @@ impl BlockClient {
         }
 
         let id = self.next_user_data();
-
         let sqe = block::sqe_read(offset, shm_vaddr as u64, len, id);
         ring.submit(sqe)?;
 
-        // Block until completion
         let wait_ep = self.notify_ep.as_ref().unwrap_or(&self.endpoint);
         loop {
             if let Some(cqe) = ring.peek_completion() {
@@ -122,136 +122,14 @@ impl BlockClient {
         }
     }
 
-    /// Read data at byte offset and length.
-    /// Both offset and len MUST be aligned to block_size.
-    pub fn read_at(&self, offset: u64, len: u32, buf: &mut [u8]) -> Result<(), Error> {
-        let ring = self.ring.as_ref().ok_or(Error::NotInitialized)?;
-        let shm = self.shm.as_ref().ok_or(Error::NotInitialized)?;
+    fn setup_ring_internal(&mut self) -> Result<(), Error> {
+        let sq_entries = self.ring_params.sq_entries;
+        let cq_entries = self.ring_params.cq_entries;
+        let notify_ep = self.ring_params.notify_ep;
+        let recv = self.ring_params.recv_slot;
+        let vaddr = self.ring_params.vaddr;
+        let size = self.ring_params.size;
 
-        // Ensure alignment to block_size
-        if self.block_size == 0
-            || offset % self.block_size as u64 != 0
-            || len % self.block_size != 0
-        {
-            return Err(Error::InvalidArgs);
-        }
-
-        if len as usize > shm.size() {
-            return Err(Error::InvalidArgs);
-        }
-
-        let id = self.next_user_data();
-
-        // Use the beginning of SHM for synchronous operations
-        // We use client_vaddr because that's what the server expects.
-        let src_addr = shm.client_vaddr() as u64;
-
-        let sqe = block::sqe_read(offset, src_addr, len, id);
-        ring.submit(sqe)?;
-
-        // Block until completion
-        let wait_ep = self.notify_ep.as_ref().unwrap_or(&self.endpoint);
-        loop {
-            if let Some(cqe) = ring.peek_completion() {
-                if cqe.user_data == id {
-                    if cqe.res < 0 {
-                        return Err(Error::Generic);
-                    }
-                    // Copy back from SHM
-                    let shm_buf = unsafe {
-                        core::slice::from_raw_parts(shm.vaddr() as *const u8, len as usize)
-                    };
-                    let copy_len = core::cmp::min(len as usize, buf.len());
-                    buf[..copy_len].copy_from_slice(&shm_buf[..copy_len]);
-                    return Ok(());
-                }
-            }
-            ring.wait_for_completions(wait_ep)?;
-        }
-    }
-
-    /// Write data at byte offset and length.
-    /// Both offset and len MUST be aligned to block_size.
-    pub fn write_at(&self, offset: u64, len: u32, buf: &[u8]) -> Result<(), Error> {
-        let ring = self.ring.as_ref().ok_or(Error::NotInitialized)?;
-        let shm = self.shm.as_ref().ok_or(Error::NotInitialized)?;
-
-        // Ensure alignment to block_size
-        if self.block_size == 0
-            || offset % self.block_size as u64 != 0
-            || len % self.block_size != 0
-        {
-            return Err(Error::InvalidArgs);
-        }
-
-        if len as usize > shm.size() {
-            return Err(Error::InvalidArgs);
-        }
-
-        let id = self.next_user_data();
-
-        // Copy to SHM first
-        let shm_buf =
-            unsafe { core::slice::from_raw_parts_mut(shm.vaddr() as *mut u8, len as usize) };
-        let copy_len = core::cmp::min(len as usize, buf.len());
-        shm_buf[..copy_len].copy_from_slice(&buf[..copy_len]);
-
-        // Use the beginning of SHM for synchronous operations
-        // We use client_vaddr because that's what the server expects.
-        let dst_addr = shm.client_vaddr() as u64;
-
-        let sqe = block::sqe_write(offset, dst_addr, len, id);
-        ring.submit(sqe)?;
-
-        let wait_ep = self.notify_ep.as_ref().unwrap_or(&self.endpoint);
-        loop {
-            if let Some(cqe) = ring.peek_completion() {
-                if cqe.user_data == id {
-                    if cqe.res < 0 {
-                        return Err(Error::Generic);
-                    }
-                    return Ok(());
-                }
-            }
-            ring.wait_for_completions(wait_ep)?;
-        }
-    }
-
-    /// Synchronous read using io_uring (compat).
-    pub fn read_blocks(&self, sector: u64, count: u32, buf: &mut [u8]) -> Result<(), Error> {
-        self.read_at(sector * self.block_size as u64, count * self.block_size, buf)
-    }
-
-    /// Synchronous write using io_uring (compat).
-    pub fn write_blocks(&self, sector: u64, count: u32, buf: &[u8]) -> Result<(), Error> {
-        self.write_at(sector * self.block_size as u64, count * self.block_size, buf)
-    }
-}
-
-impl BlockDriver for BlockClient {
-    fn capacity(&self) -> u64 {
-        let mut utcb = unsafe { UTCB::new() };
-        utcb.clear();
-        let tag = MsgTag::new(BLOCK_PROTO, block::GET_CAPACITY, MsgFlags::NONE);
-        utcb.set_msg_tag(tag);
-        if let Ok(_) = self.endpoint.call(&mut utcb) { utcb.get_mr(0) as u64 } else { 0 }
-    }
-
-    fn block_size(&self) -> u32 {
-        let mut utcb = unsafe { UTCB::new() };
-        utcb.clear();
-        let tag = MsgTag::new(BLOCK_PROTO, block::GET_BLOCK_SIZE, MsgFlags::NONE);
-        utcb.set_msg_tag(tag);
-        if let Ok(_) = self.endpoint.call(&mut utcb) { utcb.get_mr(0) as u32 } else { 4096 }
-    }
-
-    fn setup_ring(
-        &mut self,
-        sq_entries: u32,
-        cq_entries: u32,
-        notify_ep: Endpoint,
-        recv: CapPtr,
-    ) -> Result<Frame, Error> {
         self.notify_ep = Some(notify_ep);
         let mut utcb = unsafe { UTCB::new() };
         utcb.clear();
@@ -262,16 +140,32 @@ impl BlockDriver for BlockClient {
         utcb.set_cap_transfer(notify_ep.cap());
         utcb.set_recv_window(recv);
         self.endpoint.call(&mut utcb)?;
-        Ok(Frame::from(recv))
+
+        let frame = Frame::from(recv);
+        self.res_client.mmap(Badge::null(), frame.clone(), vaddr, size)?;
+        let ring_buf = unsafe {
+            IoUringBuffer::new(vaddr as *mut u8, size, sq_entries as u32, cq_entries as u32)
+        };
+        let mut ring = IoUringClient::new(ring_buf);
+        ring.set_server_notify(self.endpoint);
+        self.ring = Some(ring);
+        Ok(())
     }
 
-    fn setup_shm(
-        &mut self,
-        frame: Frame,
-        vaddr: usize,
-        paddr: u64,
-        size: usize,
-    ) -> Result<(), Error> {
+    fn setup_shm_internal(&mut self) -> Result<(), Error> {
+        let frame = self.shm_params.frame.clone();
+        let vaddr = self.shm_params.vaddr;
+        let paddr = self.shm_params.paddr;
+        let size = self.shm_params.size;
+        let recv = self.shm_params.recv_slot;
+
+        if frame.cap().is_null() {
+            // BlockClient (for bare devices) expects to be provided a Frame (with physical address)
+            // to pass down to the hardware-level driver.
+            return Err(Error::NotInitialized);
+        }
+
+        // Send memory frame and physical address to the driver server.
         let mut utcb = unsafe { UTCB::new() };
         utcb.clear();
         utcb.set_cap_transfer(frame.cap());
@@ -280,31 +174,101 @@ impl BlockDriver for BlockClient {
         utcb.set_mr(1, size);
         utcb.set_mr(2, paddr as usize);
         utcb.set_msg_tag(tag);
-
+        utcb.set_recv_window(recv);
         self.endpoint.call(&mut utcb)?;
 
+        if !utcb.get_msg_tag().flags().contains(MsgFlags::OK) {
+            return Err(Error::Generic);
+        }
+
         let mut shm = SharedMemory::new(frame, vaddr, size);
+        shm.set_client_vaddr(vaddr);
         shm.set_paddr(paddr);
-        self.set_shm(shm);
+        self.shm = Some(shm);
+
         Ok(())
     }
 }
 
-impl BlockClient {
-    pub fn request_shm(&self, recv: CapPtr) -> Result<(Frame, usize, usize, usize), Error> {
-        let mut utcb = unsafe { UTCB::new() };
-        utcb.clear();
-        let tag = MsgTag::new(BLOCK_PROTO, block::SETUP_BUFFER, glenda::ipc::MsgFlags::NONE);
-        utcb.set_msg_tag(tag);
-        // We are requesting a cap, so set recv window
-        utcb.set_recv_window(recv);
+impl BlockDriver for BlockClient {
+    fn read_blocks(&self, sector: u64, count: u32, buf: &mut [u8]) -> Result<(), Error> {
+        let ring = self.ring.as_ref().ok_or(Error::NotInitialized)?;
+        let shm = self.shm.as_ref().ok_or(Error::NotInitialized)?;
 
-        self.endpoint.call(&mut utcb)?;
+        if self.block_size == 0 {
+            return Err(Error::NotInitialized);
+        }
 
-        let fossil_vaddr = utcb.get_mr(0);
-        let size = utcb.get_mr(1);
-        let paddr = utcb.get_mr(2);
+        let len = (count * self.block_size) as usize;
+        if len > shm.size() {
+            glenda::println!("Requested read length {} exceeds SHM size {}", len, shm.size());
+            return Err(Error::InvalidArgs);
+        }
 
-        Ok((Frame::from(recv), fossil_vaddr, size, paddr))
+        let id = self.next_user_data();
+        let sqe = block::sqe_read(sector, shm.client_vaddr() as u64, count * self.block_size, id);
+        ring.submit(sqe)?;
+
+        let wait_ep = self.notify_ep.as_ref().unwrap_or(&self.endpoint);
+        loop {
+            if let Some(cqe) = ring.peek_completion() {
+                if cqe.user_data == id {
+                    if cqe.res < 0 {
+                        return Err(Error::Generic);
+                    }
+                    // Copy back from SHM
+                    let shm_buf =
+                        unsafe { core::slice::from_raw_parts(shm.vaddr() as *const u8, len) };
+                    let copy_len = core::cmp::min(len, buf.len());
+                    buf[..copy_len].copy_from_slice(&shm_buf[..copy_len]);
+                    return Ok(());
+                }
+            }
+            ring.wait_for_completions(wait_ep)?;
+        }
+    }
+
+    fn write_blocks(&self, sector: u64, count: u32, buf: &[u8]) -> Result<(), Error> {
+        let ring = self.ring.as_ref().ok_or(Error::NotInitialized)?;
+        let shm = self.shm.as_ref().ok_or(Error::NotInitialized)?;
+
+        if self.block_size == 0 {
+            return Err(Error::NotInitialized);
+        }
+
+        let len = (count * self.block_size) as usize;
+        if len > shm.size() {
+            return Err(Error::InvalidArgs);
+        }
+
+        // Copy to SHM first
+        let shm_buf = unsafe { core::slice::from_raw_parts_mut(shm.vaddr() as *mut u8, len) };
+        let copy_len = core::cmp::min(len, buf.len());
+        shm_buf[..copy_len].copy_from_slice(&buf[..copy_len]);
+
+        let id = self.next_user_data();
+        let sqe = block::sqe_write(sector, shm.client_vaddr() as u64, count * self.block_size, id);
+        ring.submit(sqe)?;
+
+        let wait_ep = self.notify_ep.as_ref().unwrap_or(&self.endpoint);
+        loop {
+            if let Some(cqe) = ring.peek_completion() {
+                if cqe.user_data == id {
+                    if cqe.res < 0 {
+                        return Err(Error::Generic);
+                    }
+                    return Ok(());
+                }
+            }
+            ring.wait_for_completions(wait_ep)?;
+        }
+    }
+
+    fn capacity(&self) -> u64 {
+        self.total_sectors
+    }
+
+    fn block_size(&self) -> u32 {
+        self.block_size
     }
 }

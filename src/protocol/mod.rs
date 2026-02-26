@@ -31,6 +31,10 @@ pub const ACPI_PROTO: usize = 0x412;
 pub const THERMAL_PROTO: usize = 0x413;
 pub const BATTERY_PROTO: usize = 0x414;
 
+// Communication
+pub const SMBUS_PROTO: usize = 0x415;
+pub const CAN_PROTO: usize = 0x416;
+
 // Storage & Network
 pub const BLOCK_PROTO: usize = 0x404;
 pub const NET_PROTO: usize = 0x405;

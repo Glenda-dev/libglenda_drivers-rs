@@ -8,7 +8,6 @@ use crate::protocol::usb::UsbSetupPacket;
 use crate::protocol::wifi::WifiApInfo;
 use alloc::string::String;
 use alloc::vec::Vec;
-use glenda::cap::{CapPtr, Endpoint, Frame};
 use glenda::error::Error;
 use glenda::ipc::Badge;
 use glenda::protocol::device::DeviceDescNode;
@@ -16,6 +15,18 @@ pub trait DriverService {
     fn init(&mut self) -> Result<(), Error>;
     fn enable(&mut self);
     fn disable(&mut self);
+}
+
+pub trait DriverClient {
+    fn connect(&mut self) -> Result<(), Error>;
+    fn disconnect(&mut self) -> Result<(), Error>;
+}
+
+pub trait BlockDriver {
+    fn read_blocks(&self, sector: u64, count: u32, buf: &mut [u8]) -> Result<(), Error>;
+    fn write_blocks(&self, sector: u64, count: u32, buf: &[u8]) -> Result<(), Error>;
+    fn block_size(&self) -> u32;
+    fn capacity(&self) -> u64;
 }
 
 /// PciDriver provides PCI config space access.
@@ -27,55 +38,9 @@ pub trait PciDriver {
     fn get_address(&self) -> PciAddress;
 }
 
-/// BlockDriver provides metadata and asynchronous IO ring setup for block-level storage.
-pub trait BlockDriver {
-    fn capacity(&self) -> u64;
-    fn block_size(&self) -> u32;
-
-    /// Initialize an IO ring for high performance asynchronous block IO.
-    /// This is the MANDATORY method for all data operations (read, write, sync).
-    /// Returns a Frame containing the shared ring memory.
-    fn setup_ring(
-        &mut self,
-        sq_entries: u32,
-        cq_entries: u32,
-        notify_ep: Endpoint,
-        recv: CapPtr,
-    ) -> Result<Frame, Error>;
-
-    /// Setup shared memory buffer for IO data.
-    fn setup_shm(
-        &mut self,
-        frame: Frame,
-        vaddr: usize,
-        paddr: u64,
-        size: usize,
-    ) -> Result<(), Error>;
-}
-
 /// NetDriver provides metadata and asynchronous IO ring setup for network packet transmission.
 pub trait NetDriver {
     fn mac_address(&self) -> MacAddress;
-
-    /// Initialize an IO ring for high performance asynchronous network IO.
-    /// This is the MANDATORY method for all packet operations (send, recv).
-    /// Returns a Frame containing the shared ring memory.
-    fn setup_ring(
-        &mut self,
-        sq_entries: u32,
-        cq_entries: u32,
-        notify_ep: Endpoint,
-        recv: CapPtr,
-    ) -> Result<Frame, Error>;
-
-    /// Setup shared memory buffer for packet data.
-    fn setup_shm(
-        &mut self,
-        frame: Frame,
-        vaddr: usize,
-        paddr: u64,
-        size: usize,
-    ) -> Result<(), Error>;
 }
 
 /// UartDriver provides serial communication.

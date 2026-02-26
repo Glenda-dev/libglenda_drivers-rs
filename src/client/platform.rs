@@ -1,11 +1,21 @@
 use glenda::cap::Endpoint;
 use glenda::error::Error;
 use glenda::ipc::{MsgFlags, MsgTag, UTCB};
-use crate::interface::PlatformDriver;
+use crate::interface::{PlatformDriver, DriverClient};
 use crate::protocol::{PLATFORM_PROTO, platform};
 
 pub struct PlatformClient {
     endpoint: Endpoint,
+}
+
+impl DriverClient for PlatformClient {
+    fn connect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
+
+    fn disconnect(&mut self) -> Result<(), Error> {
+        Ok(())
+    }
 }
 
 impl PlatformClient {
