@@ -48,6 +48,7 @@ pub trait UartDriver {
     fn put_char(&mut self, c: u8);
     fn get_char(&mut self) -> Option<u8>;
     fn put_str(&mut self, s: &str);
+    fn set_baud_rate(&mut self, baud: u32);
 }
 
 /// WifiDriver provides wireless network management.

@@ -185,4 +185,14 @@ impl UartDriver for UartClient {
             let _ = self.endpoint.call(&mut utcb);
         }
     }
+
+    fn set_baud_rate(&mut self, baud: u32) {
+        let mut utcb = unsafe { UTCB::new() };
+        utcb.clear();
+        let tag = MsgTag::new(UART_PROTO, uart::SET_BAUD_RATE, MsgFlags::NONE);
+        utcb.set_msg_tag(tag);
+        utcb.set_mr(0, baud as usize);
+
+        let _ = self.endpoint.call(&mut utcb);
+    }
 }
