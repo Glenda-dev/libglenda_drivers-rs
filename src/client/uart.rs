@@ -81,7 +81,6 @@ impl UartClient {
         let recv = self.ring_params.recv_slot;
         let vaddr = self.ring_params.vaddr;
         let size = self.ring_params.size;
-
         self.notify_ep = Some(notify_ep);
         let mut utcb = unsafe { UTCB::new() };
         utcb.clear();
@@ -93,11 +92,11 @@ impl UartClient {
         utcb.set_msg_tag(tag);
 
         self.endpoint.call(&mut utcb)?;
-
         let frame = Frame::from(recv);
         self.res_client.mmap(Badge::null(), frame.clone(), vaddr, size)?;
-        let ring_buf =
-            unsafe { IoUringBuffer::new(vaddr as *mut u8, size, sq_entries as u32, cq_entries as u32) };
+        let ring_buf = unsafe {
+            IoUringBuffer::new(vaddr as *mut u8, size, sq_entries as u32, cq_entries as u32)
+        };
         self.ring = Some(IoUringClient::new(ring_buf));
         Ok(())
     }
@@ -145,6 +144,10 @@ impl UartClient {
         let ring = self.ring.as_ref().ok_or(Error::NotInitialized)?;
         let ep = self.notify_ep.as_ref().unwrap_or(&self.endpoint);
         ring.wait_for_completions(ep)
+    }
+
+    pub fn shm_params(&self) -> &ShmParams {
+        &self.shm_params
     }
 }
 
